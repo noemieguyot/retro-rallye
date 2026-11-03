@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>Rétro Rallye</title>
+  <style>
+    :root{color-scheme:dark;--ink:#f6f3e9;--muted:#aab4c5;--lime:#c9f36a;--pink:#ff6b81;--panel:#172234}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% -20%,#34445c 0,#101827 60%);color:var(--ink);font-family:ui-rounded,"Trebuchet MS",system-ui,sans-serif;display:grid;place-items:center;padding:24px}
+    main{width:min(100%,760px)}header{display:flex;align-items:end;justify-content:space-between;gap:18px;margin:0 0 16px}h1{margin:0;font-size:clamp(2rem,6vw,3.5rem);letter-spacing:-.06em;line-height:.95}h1 span{color:var(--lime)}.eyebrow{text-transform:uppercase;letter-spacing:.18em;color:var(--lime);font-size:.72rem;font-weight:800;margin:0 0 8px}.scorebox{background:var(--panel);border:1px solid #34445c;border-radius:16px;padding:9px 15px;text-align:right;min-width:105px}.scorebox small{display:block;color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.12em}.scorebox strong{font-variant-numeric:tabular-nums;font-size:1.4rem}
+    .game-wrap{position:relative;border:1px solid #43516a;border-radius:22px;overflow:hidden;box-shadow:0 24px 70px #0008;background:#172234}canvas{display:block;width:100%;height:auto;touch-action:none}.overlay{position:absolute;inset:0;display:grid;place-items:center;background:#101827bb;backdrop-filter:blur(4px);padding:22px;text-align:center}.overlay[hidden]{display:none}.card{max-width:350px}.card h2{font-size:2rem;margin:0 0 8px}.card p{color:#d2d9e4;line-height:1.5;margin:0 0 18px}button{font:inherit;font-weight:800;border:0;border-radius:12px;background:var(--lime);color:#172016;padding:12px 20px;cursor:pointer;box-shadow:0 4px 0 #89b83d;transition:transform .08s,filter .15s}button:hover{filter:brightness(1.08)}button:active{transform:translateY(3px);box-shadow:0 1px 0 #89b83d}.below{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 2px;color:var(--muted);font-size:.9rem}.below b{color:var(--ink)}.touch{display:none;gap:12px;justify-content:center;margin-top:14px}.touch button{width:82px;height:58px;font-size:1.4rem;padding:0}.tip{color:var(--muted);text-align:center;margin:20px 0 0;font-size:.82rem}@media(max-width:580px){body{padding:16px}header{align-items:center}.below{font-size:.78rem}.touch{display:flex}.tip{margin-top:14px}}
+  </style>
+</head>
+<body>
+  <main>
+    <header><div><p class="eyebrow">Mini-jeu · édition 01</p><h1>Rétro <span>Rallye</span></h1></div><div class="scorebox"><small>Distance</small><strong id="score">0000</strong></div></header>
+    <section class="game-wrap" aria-label="Jeu de voiture">
+      <canvas id="game" width="720" height="480" aria-label="Évite les voitures sur la route"></canvas>
+      <div class="overlay" id="overlay"><div class="card"><h2 id="title">Prêt à rouler ?</h2><p id="message">Évite les voitures et va le plus loin possible. Utilise ← → ou A / D pour changer de voie.</p><button id="start">Démarrer</button></div></div>
+    </section>
+    <div class="below"><span>← → <b>ou</b> A / D</span><span>Évite les obstacles · attrape le rythme</span></div>
+    <div class="touch"><button id="left" aria-label="Aller à gauche">←</button><button id="right" aria-label="Aller à droite">→</button></div>
+    <p class="tip">Un petit projet ouvert à modifier ensemble ✦</p>
+  </main>
+<script>
+(() => {
+  const canvas=document.querySelector('#game'),ctx=canvas.getContext('2d'),scoreEl=document.querySelector('#score'),overlay=document.querySelector('#overlay'),title=document.querySelector('#title'),message=document.querySelector('#message'),startBtn=document.querySelector('#start');
+  const W=canvas.width,H=canvas.height,lanes=[270,360,450],player={lane:1,y:365},traffic=[];
+  let running=false,score=0,last=0,spawn=0,speed=230,roadOffset=0,raf=0;
+  const colors=['#ff6b81','#ffd166','#a78bfa','#56d6c2'];
+  function rounded(x,y,w,h,r,color){ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
+  function car(x,y,color,playerCar=false){
+    ctx.save();ctx.translate(x,y);
+    rounded(-21,2,42,68,12,'#09101b');rounded(-18,0,36,64,10,color);
+    rounded(-13,8,26,17,6,playerCar?'#baf3e8':'#26364a');rounded(-13,39,26,13,5,playerCar?'#7aa59c':'#26364a');
+    rounded(-19,8,5,11,2,'#fff0a8');rounded(14,8,5,11,2,'#fff0a8');rounded(-19,48,5,9,2,'#ff6b81');rounded(14,48,5,9,2,'#ff6b81');
+    ctx.restore();
+  }
+  function draw(){
+    ctx.fillStyle='#182b2b';ctx.fillRect(0,0,W,H);
+    for(let y=-30;y<H;y+=48){const yy=(y+roadOffset)%H;ctx.fillStyle='#243b36';ctx.fillRect(100,yy,12,24);ctx.fillRect(608,yy,12,24)}
+    ctx.fillStyle='#3e4854';ctx.fillRect(170,0,380,H);ctx.fillStyle='#e8d78c';ctx.fillRect(178,0,5,H);ctx.fillRect(537,0,5,H);
+    for(const x of [300,420])for(let y=-55;y<H;y+=90){ctx.fillStyle='#c8c9c2';ctx.fillRect(x,y+roadOffset,4,45)}
+    traffic.forEach(t=>car(lanes[t.lane],t.y,t.color));car(lanes[player.lane],player.y,'#c9f36a',true);
+  }
+  function end(){running=false;cancelAnimationFrame(raf);overlay.hidden=false;title.textContent='Sortie de route !';message.textContent=`Tu as parcouru ${Math.floor(score)} mètres. On retente pour battre le record ?`;startBtn.textContent='Rejouer'}
+  function frame(now){if(!running)return;const dt=Math.min((now-last)/1000,.04);last=now;score+=dt*12;speed=230+Math.min(score*1.2,180);spawn+=dt;roadOffset=(roadOffset+speed*dt)%90;
+    if(spawn>Math.max(.42,1.05-score/420)){spawn=0;const lane=Math.floor(Math.random()*3);traffic.push({lane,y:-75,color:colors[Math.floor(Math.random()*colors.length)]})}
+    for(const t of traffic)t.y+=speed*dt;traffic.splice(0,traffic.length,...traffic.filter(t=>t.y<H+80));
+    for(const t of traffic)if(t.lane===player.lane&&Math.abs(t.y-player.y)<55){scoreEl.textContent=String(Math.floor(score)).padStart(4,'0');draw();end();return}
+    scoreEl.textContent=String(Math.floor(score)).padStart(4,'0');draw();raf=requestAnimationFrame(frame)
+  }
+  function start(){traffic.length=0;score=0;spawn=0;speed=230;player.lane=1;last=performance.now();running=true;overlay.hidden=true;scoreEl.textContent='0000';draw();raf=requestAnimationFrame(frame)}
+  function move(n){if(running)player.lane=Math.max(0,Math.min(2,player.lane+n))}
+  document.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','a','A','d','D'].includes(e.key))e.preventDefault();if(e.key==='ArrowLeft'||e.key.toLowerCase()==='a')move(-1);if(e.key==='ArrowRight'||e.key.toLowerCase()==='d')move(1);if(e.key==='Enter'&&!running)start()});
+  document.querySelector('#left').addEventListener('pointerdown',()=>move(-1));document.querySelector('#right').addEventListener('pointerdown',()=>move(1));startBtn.addEventListener('click',start);draw();
+})();
+</script>
+</body>
+</html>
